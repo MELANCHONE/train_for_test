@@ -541,6 +541,8 @@ void MainWindow::finishTraining() {
 
 bool MainWindow::readXlsx(const QString &path, int type, QVector<Question> &out,
                           QString &error) const {
+    // 每次读取都从当前 Excel 重新生成题目，避免把上一次训练的题目带入本次训练。
+    out.clear();
     QZipReader zip(path);
     if (!zip.exists()) {
         error = QStringLiteral("无法打开 Excel 文件。");
