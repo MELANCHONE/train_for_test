@@ -1,0 +1,21 @@
+# Qt / CMake generated files
+build/
+*.user
+*.user.*
+CMakeLists.txt.user
+.qtcreator/
+
+# Release output (upload as GitHub Release asset)
+dist/
+
+# Local source material and generated quiz exports
+pitctures/
+outputs/
+tmp_contact/
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
