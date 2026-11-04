@@ -19,3 +19,6 @@ tmp_contact/
 *.swp
 Thumbs.db
 .DS_Store
+
+# Local tool dependencies
+tools/node_modules/
