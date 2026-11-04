@@ -41,12 +41,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 QString MainWindow::typeName(int type) const {
     return type == Single     ? QStringLiteral("单选题")
            : type == Multiple ? QStringLiteral("多选题")
-                              : QStringLiteral("判断题");
+           : type == Judge    ? QStringLiteral("判断题")
+                              : QStringLiteral("简答题");
 }
 QString MainWindow::typeFolder(int type) const {
     return type == Single     ? QStringLiteral("single")
            : type == Multiple ? QStringLiteral("multiple")
-                              : QStringLiteral("judge");
+           : type == Judge    ? QStringLiteral("judge")
+                              : QStringLiteral("short_answer");
 }
 QString MainWindow::bankRoot(int type) const {
     const QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
@@ -75,19 +77,19 @@ void MainWindow::buildUi() {
     root->addWidget(pages, 1);
     homePage = new QWidget;
     auto *hl = new QVBoxLayout(homePage);
-    auto *intro = new QLabel(QStringLiteral(
-        "导入 Excel "
-        "题库，随机生成专属训练。\n每种题型可维护多个独立题库，训练题数会自动按题库容量校验。"));
+    auto *intro = new QLabel(QStringLiteral("导入 Excel "
+                                            "题库，随机生成专属训练。\n单选、多选、判断和简答题都可"
+                                            "以维护独立题库，训练题数会自动按题库容量校验。"));
     intro->setObjectName("intro");
     hl->addWidget(intro);
     auto *cards = new QHBoxLayout;
     const QStringList names = {QStringLiteral("单选题"), QStringLiteral("多选题"),
-                               QStringLiteral("判断题")};
+                               QStringLiteral("判断题"), QStringLiteral("简答题")};
     for (int i = 0; i < names.size(); ++i) {
         auto *b = new QPushButton(names.at(i) + QStringLiteral("\n进入题库"));
         b->setMinimumHeight(130);
         b->setObjectName("typeCard");
-        // 三个入口共用 openType()，i 分别对应单选、多选、判断。
+        // 四个入口共用 openType()，i 分别对应单选、多选、判断、简答。
         connect(b, &QPushButton::clicked, this, [this, i] { openType(i); });
         cards->addWidget(b);
     }
@@ -162,6 +164,17 @@ void MainWindow::buildUi() {
     resultLabel->setWordWrap(true);
     resultLabel->setObjectName("result");
     ql->addWidget(resultLabel);
+    auto *shortAnswerActions = new QHBoxLayout;
+    showAnswerButton = new QPushButton(QStringLiteral("显示答案"));
+    hideAnswerButton = new QPushButton(QStringLiteral("隐藏答案"));
+    showAnswerButton->setObjectName("secondaryButton");
+    hideAnswerButton->setObjectName("secondaryButton");
+    shortAnswerActions->addWidget(showAnswerButton);
+    shortAnswerActions->addWidget(hideAnswerButton);
+    shortAnswerActions->addStretch();
+    ql->addLayout(shortAnswerActions);
+    connect(showAnswerButton, &QPushButton::clicked, this, &MainWindow::showShortAnswer);
+    connect(hideAnswerButton, &QPushButton::clicked, this, &MainWindow::hideShortAnswer);
     nextButton = new QPushButton(QStringLiteral("提交答案"));
     nextButton->setObjectName("primaryButton");
     ql->addWidget(nextButton);
@@ -182,6 +195,8 @@ void MainWindow::buildUi() {
         "weight:600;min-height:48px;} "
         "QPushButton#primaryButton:hover{background:#2856c6;color:#ffffff;} "
         "QPushButton#primaryButton:pressed{background:#1f45a5;color:#ffffff;} "
+        "QPushButton#secondaryButton{background:#ffffff;color:#356ae6;border:1px solid #8eabef;} "
+        "QPushButton#secondaryButton:hover{background:#e7efff;color:#1747b3;} "
         "QPushButton:disabled{background:#eef1f5;color:#8a94a3;border-color:#d9dee8;} "
         "QPushButton#typeCard{font-size:20px;font-weight:600;color:#20304d;background:white;border:"
         "1px solid #dbe2ef;} "
@@ -378,14 +393,27 @@ void MainWindow::showCurrentQuestion() {
     answerShown = false;
     resultLabel->clear();
     resultLabel->setStyleSheet(QString());
-    if (nextButton)
-        nextButton->setText(QStringLiteral("提交答案"));
+    if (showAnswerButton)
+        showAnswerButton->setVisible(currentType == ShortAnswer);
+    if (hideAnswerButton)
+        hideAnswerButton->setVisible(currentType == ShortAnswer);
+    if (nextButton) {
+        nextButton->setText(currentType == ShortAnswer ? QStringLiteral("看完了，下一题")
+                                                       : QStringLiteral("提交答案"));
+    }
     const Question &q = questions.at(questionIndex);
     progressLabel->setText(
         QStringLiteral("第 %1 / %2 题").arg(currentIndex + 1).arg(trainingIndices.size()));
     questionLabel->setText(q.text);
     auto *box = quizPage->findChild<QGroupBox *>("answerBox");
-    if (!box || !box->layout())
+    if (!box)
+        return;
+    box->setVisible(currentType != ShortAnswer);
+    if (currentType == ShortAnswer) {
+        resultLabel->setText(QStringLiteral("答案已隐藏，准备好后点击“看完了，下一题”。"));
+        return;
+    }
+    if (!box->layout())
         return;
     auto *lay = qobject_cast<QVBoxLayout *>(box->layout());
     if (!lay)
@@ -428,6 +456,14 @@ void MainWindow::nextQuestion() {
     const int questionIndex = trainingIndices.at(currentIndex);
     if (questionIndex < 0 || questionIndex >= questions.size()) {
         finishTraining();
+        return;
+    }
+    if (currentType == ShortAnswer) {
+        if (++currentIndex >= trainingIndices.size()) {
+            finishTraining();
+            return;
+        }
+        showCurrentQuestion();
         return;
     }
     if (answerShown) {
@@ -524,10 +560,20 @@ void MainWindow::finishTraining() {
     questionLabel->setText(QStringLiteral("本次训练已完成"));
     progressLabel->setText(QStringLiteral("得分：%1 / %2").arg(score).arg(trainingIndices.size()));
     clearQuestionWidgets();
+    if (showAnswerButton)
+        showAnswerButton->setVisible(false);
+    if (hideAnswerButton)
+        hideAnswerButton->setVisible(false);
+    auto *box = quizPage->findChild<QGroupBox *>("answerBox");
+    if (box)
+        box->setVisible(false);
     resultLabel->setStyleSheet(
         QStringLiteral("background:#ffffff;color:#20304d;border:1px solid #d6dce6;"));
     QString summary;
-    if (wrongQuestionSummaries.isEmpty()) {
+    if (currentType == ShortAnswer) {
+        summary =
+            QStringLiteral("本次简答题训练完成，共完成 %1 道题。").arg(trainingIndices.size());
+    } else if (wrongQuestionSummaries.isEmpty()) {
         summary = QStringLiteral("本次训练全部答对！");
     } else {
         summary = QStringLiteral("错题（共 %1 道）：\n\n%2")
@@ -537,6 +583,31 @@ void MainWindow::finishTraining() {
     resultLabel->setText(summary);
     if (nextButton)
         nextButton->setText(QStringLiteral("返回首页"));
+}
+
+void MainWindow::showShortAnswer() {
+    if (currentType != ShortAnswer || currentIndex < 0 || currentIndex >= trainingIndices.size())
+        return;
+    const int questionIndex = trainingIndices.at(currentIndex);
+    if (questionIndex < 0 || questionIndex >= questions.size())
+        return;
+    const Question &question = questions.at(questionIndex);
+    const QString explanation = question.explanation.trimmed();
+    resultLabel->setStyleSheet(
+        QStringLiteral("background:#effaf2;color:#167a3d;border:1px solid #42b883;"));
+    resultLabel->setText(QStringLiteral("参考答案：%1%2")
+                             .arg(question.answer, explanation.isEmpty()
+                                                       ? QString()
+                                                       : QStringLiteral("\n解析：") + explanation));
+    answerShown = true;
+}
+
+void MainWindow::hideShortAnswer() {
+    if (currentType != ShortAnswer)
+        return;
+    resultLabel->setStyleSheet(QString());
+    resultLabel->setText(QStringLiteral("答案已隐藏，准备好后点击“看完了，下一题”。"));
+    answerShown = false;
 }
 
 bool MainWindow::readXlsx(const QString &path, int type, QVector<Question> &out,
@@ -659,7 +730,7 @@ bool MainWindow::readXlsx(const QString &path, int type, QVector<Question> &out,
                 q.options << clean(cells.at(c));
         if (type == Judge && q.options.isEmpty())
             q.options << QStringLiteral("正确") << QStringLiteral("错误");
-        if (type == Judge || q.options.size() >= 2)
+        if (type == Judge || type == ShortAnswer || q.options.size() >= 2)
             out << q;
     }
     return true;

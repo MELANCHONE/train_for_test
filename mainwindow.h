@@ -35,12 +35,15 @@ class MainWindow : public QMainWindow {
     void nextQuestion();
     void finishTraining();
     void goHome();
+    void showShortAnswer();
+    void hideShortAnswer();
 
   private:
     enum Type {
         Single = 0,
         Multiple = 1,
-        Judge = 2
+        Judge = 2,
+        ShortAnswer = 3
     };
     QString typeName(int type) const;
     QString typeFolder(int type) const;
@@ -65,6 +68,8 @@ class MainWindow : public QMainWindow {
     QLabel *questionLabel = nullptr;
     QLabel *progressLabel = nullptr;
     QLabel *resultLabel = nullptr;
+    QPushButton *showAnswerButton = nullptr;
+    QPushButton *hideAnswerButton = nullptr;
     QComboBox *bankCombo = nullptr;
     QSpinBox *countSpin = nullptr;
     QListWidget *bankList = nullptr;
